@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Despachos · La Quinta</title>
+<style>
+  :root{--bg:#f6f7f9;--card:#fff;--tx:#1b1f24;--mut:#667085;--bd:#d9dde3;--ac:#1f4fd8;
+        --ok:#157347;--okb:#e3f4ea;--al:#9a6700;--alb:#fff4d6;--re:#b42318;--reb:#fde7e5;--rs:#444;--rsb:#e9eaee}
+  @media (prefers-color-scheme:dark){:root{--bg:#14161a;--card:#1d2026;--tx:#e8eaee;--mut:#9aa3b2;--bd:#343a44;--ac:#7aa2ff;
+        --ok:#6fd49a;--okb:#18382a;--al:#f0c24b;--alb:#3a3115;--re:#ff8a80;--reb:#43201d;--rs:#c9ccd3;--rsb:#2b2f37}}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.45 system-ui,sans-serif}
+  main{max-width:880px;margin:0 auto;padding:16px}
+  h1{font-size:20px;margin:8px 0 12px}
+  nav{display:flex;gap:6px;margin-bottom:14px}
+  nav button{flex:1;padding:10px;border:1px solid var(--bd);background:var(--card);color:var(--tx);border-radius:8px;cursor:pointer;font:inherit}
+  nav button.on{background:var(--ac);color:#fff;border-color:var(--ac)}
+  .card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:16px;margin-bottom:14px}
+  form{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--mut)}
+  input,select{padding:9px;border:1px solid var(--bd);border-radius:6px;background:var(--bg);color:var(--tx);font:inherit}
+  .full{grid-column:1/-1}
+  button.go{padding:11px;border:0;border-radius:8px;background:var(--ac);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+  button.go:disabled{opacity:.6;cursor:wait}
+  #res{display:none;border-radius:10px;padding:14px;font-weight:600}
+  #res small{display:block;font-weight:400;margin-top:4px}
+  .aprobado{background:var(--okb);color:var(--ok)} .alerta{background:var(--alb);color:var(--al)}
+  .rechazado{background:var(--reb);color:var(--re)} .respaldo{background:var(--rsb);color:var(--rs)}
+  .wrap{overflow-x:auto}
+  table{border-collapse:collapse;width:100%;font-size:13px}
+  th,td{text-align:left;padding:8px;border-bottom:1px solid var(--bd);white-space:nowrap}
+  td.est{font-weight:600}
+  .bar{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap}
+  .mut{color:var(--mut);font-size:13px}
+  @media(max-width:560px){form{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main>
+<h1>Distribuidora La Quinta · Control de despachos</h1>
+<nav>
+  <button id="t1" class="on" onclick="ver(1)">Registrar despacho</button>
+  <button id="t2" onclick="ver(2)">Historial de movimientos</button>
+</nav>
+
+<section id="v1">
+  <form class="card" id="f">
+    <label>Solicitante<input name="solicitante" required></label>
+    <label>Correo<input name="correo" type="email" required></label>
+    <label>Código de producto
+      <input name="codigo_producto" list="cods" placeholder="INS-0101" required>
+      <datalist id="cods">
+        <option value="INS-0101">Harina de trigo x 25 kg</option>
+        <option value="INS-0102">Azúcar refinada x 50 kg</option>
+        <option value="INS-0203">Aceite vegetal x 20 L</option>
+        <option value="INS-0204">Arroz blanco x 25 kg</option>
+        <option value="INS-0305">Servilletas x 1000 u</option>
+        <option value="INS-0306">Vasos desechables 7 oz x 2500</option>
+        <option value="INS-0407">Pollo congelado x 10 kg</option>
+        <option value="INS-0408">Queso mozzarella x 5 kg</option>
+      </datalist>
+    </label>
+    <label>Cantidad<input name="cantidad" type="number" min="1" step="1" required></label>
+    <label>Destino<input name="destino" required></label>
+    <label>Motivo
+      <select name="motivo"><option value="despacho">Despacho</option><option value="traslado entre sedes">Traslado entre sedes</option><option value="avería">Avería</option></select>
+    </label>
+    <button class="go full" id="btn">Registrar y validar</button>
+  </form>
+  <div id="res"></div>
+</section>
+
+<section id="v2" style="display:none">
+  <div class="card">
+    <div class="bar"><span class="mut" id="fuente"></span>
+      <span><button onclick="cargar()">Actualizar</button> <button onclick="borrar()">Borrar copia local</button></span></div>
+    <div class="wrap"><table>
+      <thead><tr><th>Fecha y hora</th><th>Solicitante</th><th>Código</th><th>Cant.</th><th>Destino</th><th>Motivo</th><th>Saldo</th><th>Resultado</th></tr></thead>
+      <tbody id="tb"></tbody></table></div>
+  </div>
+</section>
+</main>
+
+<script>
+// ====== CONFIGURACIÓN: pegar aquí las URLs de Make ======
+const WEBHOOK_URL   = "";  // URL del webhook personalizado (módulo "Webhooks > Custom webhook")
+const HISTORIAL_URL = "";  // Opcional: URL que devuelva un arreglo JSON con los movimientos. Si queda vacío se usa la copia local.
+// ========================================================
+
+const KEY = "despachos_historial";
+const $ = id => document.getElementById(id);
+const local = () => JSON.parse(localStorage.getItem(KEY) || "[]");
+
+function ver(n){
+  $("v1").style.display = n===1 ? "" : "none";
+  $("v2").style.display = n===2 ? "" : "none";
+  $("t1").className = n===1 ? "on" : ""; $("t2").className = n===2 ? "on" : "";
+  if(n===2) cargar();
+}
+
+function clasificar(t){
+  t = String(t||"").toUpperCase();
+  if(t.includes("ALERTA")) return ["alerta","APROBADO CON ALERTA"];
+  if(t.includes("RECHAZ")) return ["rechazado","RECHAZADO"];
+  if(t.includes("APROB"))  return ["aprobado","APROBADO"];
+  return ["respaldo","RUTA DE RESPALDO"];
+}
+
+function mostrar(clase, titulo, detalle){
+  const r = $("res"); r.className = clase; r.style.display = "block";
+  r.innerHTML = ""; r.append(titulo);
+  const s = document.createElement("small"); s.textContent = detalle; r.append(s);
+}
+
+$("f").addEventListener("submit", async e => {
+  e.preventDefault();
+  if(!WEBHOOK_URL){ mostrar("rechazado","Falta configurar WEBHOOK_URL","Pega la URL del webhook de Make al inicio del script."); return; }
+  const d = Object.fromEntries(new FormData(e.target));
+  d.codigo_producto = d.codigo_producto.trim().toUpperCase();
+  d.cantidad = Number(d.cantidad);
+  d.fecha_hora = new Date().toISOString();
+  d.id_solicitud = "SOL-" + Date.now();
+  $("btn").disabled = true; $("btn").textContent = "Validando…";
+  let clase="respaldo", titulo="Sin respuesta del proceso", detalle="", saldo="";
+  try{
+    // application/x-www-form-urlencoded evita el preflight CORS (Make no responde OPTIONS)
+    const resp = await fetch(WEBHOOK_URL, {method:"POST", body:new URLSearchParams(d)});
+    const txt = await resp.text();
+    let j = null; try{ j = JSON.parse(txt); }catch(_){}
+    if(j){
+      [clase,titulo] = clasificar(j.resultado || j.estado);
+      saldo = j.saldo ?? "";
+      detalle = j.mensaje || (saldo!=="" ? "Saldo resultante: "+saldo : "");
+    }else{
+      [clase,titulo] = clasificar(txt);
+      detalle = txt.slice(0,200);
+    }
+    if(!resp.ok){ clase="respaldo"; titulo="Error HTTP "+resp.status; }
+  }catch(err){
+    detalle = "No se pudo contactar el webhook (¿escenario activo? ¿cabecera CORS?): "+err.message;
+  }
+  mostrar(clase, titulo, detalle);
+  const h = local(); h.unshift({...d, saldo, resultado:titulo}); localStorage.setItem(KEY, JSON.stringify(h.slice(0,200)));
+  $("btn").disabled = false; $("btn").textContent = "Registrar y validar";
+});
+
+async function cargar(){
+  let filas = local(), src = "Copia local de este navegador (incluye rechazados, que Make no escribe).";
+  if(HISTORIAL_URL){
+    try{ filas = await (await fetch(HISTORIAL_URL)).json(); src = "Tabla de movimientos (Make)."; }
+    catch(_){ src = "No se pudo leer HISTORIAL_URL; se muestra la copia local."; }
+  }
+  $("fuente").textContent = src;
+  const tb = $("tb"); tb.innerHTML = "";
+  if(!filas.length){ tb.innerHTML = '<tr><td colspan="8" class="mut">Sin movimientos todavía.</td></tr>'; return; }
+  for(const f of filas){
+    const tr = document.createElement("tr");
+    const [c] = clasificar(f.resultado);
+    const vals = [new Date(f.fecha_hora).toLocaleString("es-CO"), f.solicitante, f.codigo_producto, f.cantidad, f.destino, f.motivo, f.saldo ?? "", f.resultado];
+    vals.forEach((v,i)=>{ const td = document.createElement("td"); td.textContent = v; if(i===7){ td.className = "est "+c; } tr.append(td); });
+    tb.append(tr);
+  }
+}
+function borrar(){ localStorage.removeItem(KEY); cargar(); }
+</script>
+</body>
+</html>
